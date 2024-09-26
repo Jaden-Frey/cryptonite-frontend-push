@@ -22,28 +22,51 @@ const SolanaCharts = () => {
   const [doughnutInsights, setDoughnutInsights] = useState("");
   const [lineInsights, setLineInsights] = useState("");
 
-  const fetchChartInsights = async (chartData, selectedRelationship) => {
+  const [loadingPolar, setLoadingPolar] = useState(false);
+  const [loadingSpeScatter, setLoadingSpeScatter] = useState(false);
+  const [loadingLine, setLoadingLine] = useState(false);
+  const [loadingGenScatter, setLoadingGenScatter] = useState(false);
+  const [loadingDoughnut, setLoadingDoughnut] = useState(false);
+
+  const isMounted = useRef(true);
+
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
+
+  const fetchChartInsights = async (filteredData, setInsights, setLoading) => {
     try {
+      setLoading(true);
       const response = await fetch('http://localhost:5000/api/generate-insights', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ chartData, selectedRelationship }),
+        body: JSON.stringify({ chartData: filteredData }),
       });
-  
+
       if (!response.ok) {
         throw new Error(`API error: ${response.statusText}`);
       }
-  
+
       const data = await response.json();
-      return data.insights; 
-  
+      if (isMounted.current) {
+        setInsights(data.insights); 
+      }
     } catch (error) {
       console.error('Error during API call:', error);
-      return null;
+      if (isMounted.current) {
+        setInsights(null); 
+      }
+    } finally {
+      if (isMounted.current) {
+        setLoading(false);
+      }
     }
-  };    
+  };
 
 const handleFilterChange = async (selectedRelationship) => {
   if (!solanaData || typeof solanaData !== 'object') {
@@ -52,18 +75,29 @@ const handleFilterChange = async (selectedRelationship) => {
   }
 
   let filteredData;
+  let setInsights;
+  let setLoading
+
   switch (selectedRelationship) {
     case 'market_cap_vs_volume':
       filteredData = { market_cap: solanaData.market_cap, total_volume: solanaData.total_volume };
+      setInsights = setPolarInsights;
+      setLoading = setLoadingPolar;
       break;
     case 'market_cap_vs_circulating_supply_line':
       filteredData = { market_cap: solanaData.market_cap, circulating_supply: solanaData.circulating_supply };
+      setInsights = setLineInsights;
+      setLoading = setLoadingLine;
       break;
     case 'volume_vs_supply':
         filteredData = { market_cap: solanaData.market_cap, circulating_supply: solanaData.circulating_supply, market_cap: solanaData.total_supply };
+        setInsights = setDoughnutInsights;
+        setLoading = setLoadingDoughnut;
       break;
     case 'market_cap_vs_volume_vs_price':
       filteredData = { market_cap: solanaData.market_cap, total_volume: solanaData.total_volume, current_price: solanaData.current_price };
+      setInsights = setGenScatterInsights;
+      setLoading = setLoadingGenScatter;
       break;
     case 'full_metrics_speScatter':
     filteredData = [
@@ -72,41 +106,28 @@ const handleFilterChange = async (selectedRelationship) => {
       { x: solanaData.current_price, y: solanaData.circulating_supply },
       { x: solanaData.total_volume, y: solanaData.circulating_supply }
     ];
+    setInsights = setSpeScatterInsights;
+    setLoading = setLoadingSpeScatter;
     break;
     default:
-      filteredData = solanaData;
-      break;
-  }
+      console.error('Unknown relationship');
+        return;
+    }
+    await fetchChartInsights(filteredData, setInsights, setLoading);
+  };
 
-  // Fetch insights from OpenAI API via backend
-  const insights = await fetchChartInsights(filteredData, selectedRelationship);
+  const LoadingEllipsis = () => {
+    const [dotCount, setDotCount] = useState(0);
   
-  if (!insights) {
-    console.error('No insights returned from API');
-    return;
-  }
+    useEffect(() => {
+      const interval = setInterval(() => {
+        setDotCount(prevCount => (prevCount + 1) % 4);
+      }, 500);
+      return () => clearInterval(interval);
+    }, []);
   
-  // Set the insights to display them below the chart
-  switch (selectedRelationship) {
-    case 'market_cap_vs_volume':
-      setPolarInsights(insights);
-      break;
-    case 'market_cap_vs_circulating_supply_line':
-      setLineInsights(insights);
-      break;
-    case 'full_metrics_speScatter':
-        setSpeScatterInsights(insights);
-      break;
-    case 'volume_vs_supply':
-        setDoughnutInsights(insights);
-      break;
-    case 'market_cap_vs_volume_vs_price':
-      setGenScatterInsights(insights);
-      break;
-    default:
-      break;
-  }
-};
+    return <span>{'.'.repeat(dotCount)}</span>;
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -967,7 +988,7 @@ const toggleLineChartInfo = () => setShowLineChartInfo((prev) => !prev);
           </select>
       </div>
 
-  <div className="solanachart-container">
+<div className="solanachart-container">
       {/* Polar Area Chart */}
 <div className="solanachart-wrapper line">
   <div className="solanachart-header">
@@ -977,12 +998,18 @@ const toggleLineChartInfo = () => setShowLineChartInfo((prev) => !prev);
      )}
   </div>
   <canvas id="solPolarAreaChart"></canvas>
-  {showPolarChartInfo && (
-    <div className="solanachart-details">
-      <p>{polarInsights}</p>
-    </div>
-  )}
-</div>
+  {loadingPolar ? (
+      <div className="loading-indicator">
+        Fetching insights<LoadingEllipsis />
+      </div>
+    ) : (
+      polarInsights && (
+        <div className="solanachart-details">
+          <p>{polarInsights}</p>
+        </div>
+      )
+    )}
+  </div>
 
 {/* Doughnut Chart */}
 <div className="solanachart-wrapper line">
@@ -993,12 +1020,18 @@ const toggleLineChartInfo = () => setShowLineChartInfo((prev) => !prev);
     )}
   </div>
   <canvas id="solDoughnutChart"></canvas>
-  {showDoughnutChartInfo && (
-    <div className="solanachart-details">
-      <p>{doughnutInsights}</p>
-    </div>
-  )}
-</div>
+  {loadingDoughnut ? (
+      <div className="loading-indicator">
+        Fetching insights<LoadingEllipsis />
+      </div>
+    ) : (
+      doughnutInsights && (
+        <div className="solanachart-details">
+          <p>{doughnutInsights}</p>
+        </div>
+      )
+    )}
+  </div>
 
   {/* Standard Scatter Chart */}
   <div className="solanachart-wrapper line">
@@ -1009,10 +1042,16 @@ const toggleLineChartInfo = () => setShowLineChartInfo((prev) => !prev);
       )}
     </div>
     <canvas id="solGenScatterChart"></canvas>
-    {showGenScatterChartInfo && (
-      <div className="solanachart-details">
-        <p>{genScatterInsights}</p>
+    {loadingGenScatter ? (
+      <div className="loading-indicator">
+        Fetching insights<LoadingEllipsis />
       </div>
+    ) : (
+      genScatterInsights && (
+        <div className="solanachart-details">
+          <p>{genScatterInsights}</p>
+        </div>
+      )
     )}
   </div>
 
@@ -1025,10 +1064,16 @@ const toggleLineChartInfo = () => setShowLineChartInfo((prev) => !prev);
       )}
     </div>
     <canvas id="solLineChart"></canvas>
-    {showLineChartInfo && (
-      <div className="solanachart-details">
-        <p>{lineInsights}</p>
+    {loadingLine ? (
+      <div className="loading-indicator">
+        Fetching insights<LoadingEllipsis />
       </div>
+    ) : (
+      lineInsights && (
+        <div className="solanachart-details">
+          <p>{lineInsights}</p>
+        </div>
+      )
     )}
   </div>
 
@@ -1041,10 +1086,16 @@ const toggleLineChartInfo = () => setShowLineChartInfo((prev) => !prev);
       )}
     </div>
     <canvas id="solSpeScatterChart"></canvas>
-    {showSpeScatterChartInfo && (
-      <div className="solanachart-details">
-        <p>{speScatterInsights}</p>
+    {loadingSpeScatter ? (
+      <div className="loading-indicator">
+        Fetching insights<LoadingEllipsis />
       </div>
+    ) : (
+      speScatterInsights && (
+        <div className="solanachart-details">
+          <p>{speScatterInsights}</p>
+        </div>
+      )
     )}
   </div>
   </div>

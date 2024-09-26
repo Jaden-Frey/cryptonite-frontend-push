@@ -21,93 +21,120 @@ const TetherCharts = () => {
   const [radarInsights, setRadarInsights] = useState("");
   const [doughnutInsights, setDoughnutInsights] = useState("");
 
-  const fetchChartInsights = async (chartData, selectedRelationship) => {
+  const [loadingPolar, setLoadingPolar] = useState(false);
+  const [loadingScatter, setLoadingScatter] = useState(false);
+  const [loadingLine, setLoadingLine] = useState(false);
+  const [loadingRadar, setLoadingRadar] = useState(false);
+  const [loadingDoughnut, setLoadingDoughnut] = useState(false);
+
+  const isMounted = useRef(true);
+
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
+
+  const fetchChartInsights = async (filteredData, setInsights, setLoading) => {
     try {
+      setLoading(true);
       const response = await fetch('http://localhost:5000/api/generate-insights', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ chartData, selectedRelationship }),
+        body: JSON.stringify({ chartData: filteredData }),
       });
-  
+
       if (!response.ok) {
         throw new Error(`API error: ${response.statusText}`);
       }
-  
+
       const data = await response.json();
-      return data.insights; 
-  
+      if (isMounted.current) {
+        setInsights(data.insights); // Safeguard if the component is unmounted
+      }
     } catch (error) {
       console.error('Error during API call:', error);
-      return null;
+      if (isMounted.current) {
+        setInsights(null); // Safeguard to avoid setting state when unmounted
+      }
+    } finally {
+      if (isMounted.current) {
+        setLoading(false);
+      }
     }
-  };    
+  };
 
-const handleFilterChange = async (selectedRelationship) => {
-  if (!tetherData || typeof tetherData !== 'object') {
-    console.error('Invalid or missing Tether data');
-    return;
-  }
+  const handleFilterChange = async (selectedRelationship) => {
+    if (!tetherData || typeof tetherData !== 'object') {
+      console.error('Invalid or missing Tether data');
+      return;
+    }
 
-  let filteredData;
-  switch (selectedRelationship) {
-    case 'market_cap_vs_volume':
-      filteredData = { market_cap: tetherData.market_cap, total_volume: tetherData.total_volume };
-      break;
-    case 'market_cap_vs_circulating_supply_line':
-      filteredData = { market_cap: tetherData.market_cap, circulating_supply: tetherData.circulating_supply };
-      break;
-    case 'market_cap_vs_circulating_supply_total_supply':
-        filteredData = { market_cap: tetherData.market_cap, circulating_supply: tetherData.circulating_supply, market_cap: tetherData.total_supply };
-      break;
-    case 'market_cap_vs_volume_vs_price':
-      filteredData = { market_cap: tetherData.market_cap, total_volume: tetherData.total_volume, current_price: tetherData.current_price };
-      break;
-    case 'full_metrics_radar':
-      filteredData = { 
-        market_cap: tetherData.market_cap, 
-        total_volume: tetherData.total_volume, 
-        current_price: tetherData.current_price, 
-        circulating_supply: tetherData.circulating_supply, 
-      };
-      break;
-    default:
-      filteredData = tetherData;
-      break;
-  }
+    let filteredData;
+    let setInsights;
+    let setLoading;
 
-  // Fetch insights from OpenAI API via backend
-  const insights = await fetchChartInsights(filteredData, selectedRelationship);
-  
-  if (!insights) {
-    console.error('No insights returned from API');
-    return;
-  }
-  
-  // Set the insights to display them below the chart
-  switch (selectedRelationship) {
-    case 'market_cap_vs_volume':
-      setPolarInsights(insights);
-      break;
-    case 'market_cap_vs_circulating_supply_line':
-      setLineInsights(insights);
-      break;
-    case 'full_metrics_radar':
-        setRadarInsights(insights);
-      break;
-    case 'market_cap_vs_circulating_supply_total_supply':
-        setDoughnutInsights(insights);
-      break;
-    case 'market_cap_vs_volume_vs_price':
-      setScatterInsights(insights);
-      break;
-    case 'full_metrics_radar':
-      setRadarInsights(insights);
-      break;
-    default:
-      break;
-  }
+    switch (selectedRelationship) {
+      case 'market_cap_vs_volume':
+        filteredData = { market_cap: tetherData.market_cap, total_volume: tetherData.total_volume };
+        setInsights = setPolarInsights;
+        setLoading = setLoadingPolar;
+        break;
+      case 'market_cap_vs_circulating_supply_line':
+        filteredData = { market_cap: tetherData.market_cap, circulating_supply: tetherData.circulating_supply };
+        setInsights = setLineInsights;
+        setLoading = setLoadingLine;
+        break;
+      case 'market_cap_vs_circulating_supply_total_supply':
+        filteredData = {
+          market_cap: tetherData.market_cap,
+          circulating_supply: tetherData.circulating_supply,
+          total_supply: tetherData.total_supply,
+        };
+        setInsights = setDoughnutInsights;
+        setLoading = setLoadingDoughnut;
+        break;
+      case 'market_cap_vs_volume_vs_price':
+        filteredData = {
+          market_cap: tetherData.market_cap,
+          total_volume: tetherData.total_volume,
+          current_price: tetherData.current_price,
+        };
+        setInsights = setScatterInsights;
+        setLoading = setLoadingScatter;
+        break;
+      case 'full_metrics_radar':
+        filteredData = {
+          market_cap: tetherData.market_cap,
+          total_volume: tetherData.total_volume,
+          current_price: tetherData.current_price,
+          circulating_supply: tetherData.circulating_supply,
+        };
+        setInsights = setRadarInsights;
+        setLoading = setLoadingRadar;
+        break;
+      default:
+        console.error('Unknown relationship');
+        return;
+    }
+
+    await fetchChartInsights(filteredData, setInsights, setLoading);
+  };
+
+  const LoadingEllipsis = () => {
+  const [dotCount, setDotCount] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setDotCount(prevCount => (prevCount + 1) % 4); 
+    }, 500);
+    return () => clearInterval(interval);
+  }, []);
+
+  return <span>{'.'.repeat(dotCount)}</span>;
 };
 
   useEffect(() => {
@@ -843,7 +870,7 @@ const toggleRadarChartInfo = () => setShowRadarChartInfo((prev) => !prev);
             </div>
     </div>
     
-    <div className="tetherchart-container">
+  <div className="tetherchart-container">
   {/* Polar Area Chart */}
   <div className="tetherchart-wrapper radar">
     <div className="tetherchart-header"> {/* Updated to match CSS */}
@@ -853,12 +880,18 @@ const toggleRadarChartInfo = () => setShowRadarChartInfo((prev) => !prev);
       )}
     </div>
     <canvas id="tetPolarAreaChart"></canvas>
-    {showPolarChartInfo && (
-      <div className="tetherchart-details">
-        <p>{polarInsights}</p>
-      </div>
-    )}
-  </div>
+    {loadingPolar ? (
+          <div className="loading-indicator">
+            Fetching insights<LoadingEllipsis />
+          </div>
+        ) : (
+          polarInsights && (
+            <div className="tetherchart-details">
+              <p>{polarInsights}</p>
+            </div>
+          )
+        )}
+    </div>
 
   {/* Doughnut Chart */}
   <div className="tetherchart-wrapper radar">
@@ -869,12 +902,18 @@ const toggleRadarChartInfo = () => setShowRadarChartInfo((prev) => !prev);
       )}
     </div>
     <canvas id="tetDoughnutChart"></canvas>
-    {showDoughnutChartInfo && (
-      <div className="tetherchart-details">
-        <p>{doughnutInsights}</p>
+    {loadingDoughnut ? (
+          <div className="loading-indicator">
+            Fetching insights<LoadingEllipsis />
+          </div>
+        ) : (
+          doughnutInsights && (
+            <div className="tetherchart-details">
+              <p>{doughnutInsights}</p>
+            </div>
+          )
+        )}
       </div>
-    )}
-  </div>
 
   {/* Scatter Chart */}
   <div className="tetherchart-wrapper radar">
@@ -885,12 +924,18 @@ const toggleRadarChartInfo = () => setShowRadarChartInfo((prev) => !prev);
       )}
     </div>
     <canvas id="tetScatterChart"></canvas>
-    {showScatterChartInfo && (
-      <div className="tetherchart-details">
-        <p>{scatterInsights}</p>
+    {loadingScatter ? (
+          <div className="loading-indicator">
+            Fetching insights<LoadingEllipsis />
+          </div>
+        ) : (
+          scatterInsights && (
+            <div className="tetherchart-details">
+              <p>{scatterInsights}</p>
+            </div>
+          )
+        )}
       </div>
-    )}
-  </div>
 
   {/* Line Chart */}
   <div className="tetherchart-wrapper radar">
@@ -901,12 +946,18 @@ const toggleRadarChartInfo = () => setShowRadarChartInfo((prev) => !prev);
       )}
     </div>
     <canvas id="tetLineChart"></canvas>
-    {showLineChartInfo && (
-      <div className="tetherchart-details">
-        <p>{lineInsights}</p>
+    {loadingLine ? (
+          <div className="loading-indicator">
+            Fetching insights<LoadingEllipsis />
+          </div>
+        ) : (
+          lineInsights && (
+            <div className="tetherchart-details">
+              <p>{lineInsights}</p>
+            </div>
+          )
+        )}
       </div>
-    )}
-  </div>
 
   {/* Radar Chart */}
   <div className="tetherchart-wrapper radar">
@@ -917,12 +968,18 @@ const toggleRadarChartInfo = () => setShowRadarChartInfo((prev) => !prev);
       )}
     </div>
     <canvas id="tetRadarChart"></canvas>
-    {showRadarChartInfo && (
-      <div className="tetherchart-details">
-        <p>{radarInsights}</p>
+    {loadingRadar ? (
+          <div className="loading-indicator">
+            Fetching insights<LoadingEllipsis />
+          </div>
+        ) : (
+          radarInsights && (
+            <div className="tetherchart-details">
+              <p>{radarInsights}</p>
+            </div>
+          )
+        )}
       </div>
-    )}
-    </div>
   </div>
 </div>
   );

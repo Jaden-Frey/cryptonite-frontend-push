@@ -52,7 +52,7 @@
   .ethereumchart-wrapper.combined canvas {
     width: 100% !important;
     height: auto !important;
-    max-height: 600px !important; 
+    max-height: 550px !important; 
   }
 
   .ethereumquery-container {
@@ -126,4 +126,21 @@
 
 .ethereuminfo-icon:hover {
   transform: scale(1.1); 
+}
+
+.loading-indicator {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-size: 1.25em;
+  font-size: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #010b13; 
+  margin-top: 10px;
+}
+
+.loading-indicator span {
+  margin-left: 5px;
+  font-weight: bold;
+  letter-spacing: 1px;
 }

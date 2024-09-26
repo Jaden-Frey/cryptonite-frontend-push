@@ -21,28 +21,52 @@ const EthereumCharts = () => {
   const [lineInsights, setLineInsights] = useState("");
   const [priceChangeInsights, setPriceChangeInsights] = useState('');
 
-  const fetchChartInsights = async (chartData, selectedRelationship) => {
+  const [loadingPolar, setLoadingPolar] = useState(false);
+  const [loadingDoughnut, setLoadingDoughnut] = useState(false);
+  const [loadingLine, setLoadingLine] = useState(false);
+  const [loadingScatter, setLoadingScatter] = useState(false);
+  const [loadingPriceChange, setLoadingPriceChange] = useState(false);
+
+  const isMounted = useRef(true);
+
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
+
+  const fetchChartInsights = async (filteredData, setInsights, setLoading) => {
     try {
+      setLoading(true);
       const response = await fetch('http://localhost:5000/api/generate-insights', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ chartData, selectedRelationship }),
+        body: JSON.stringify({ chartData: filteredData }),
       });
-  
+
       if (!response.ok) {
         throw new Error(`API error: ${response.statusText}`);
       }
-  
+
       const data = await response.json();
-      return data.insights; 
-  
+      if (isMounted.current) {
+        setInsights(data.insights); 
+      }
     } catch (error) {
       console.error('Error during API call:', error);
-      return null;
+      if (isMounted.current) {
+        setInsights(null); 
+      }
+    } finally {
+      if (isMounted.current) {
+        setLoading(false);
+      }
     }
-  };    
+  };   
+
 
 const handleFilterChange = async (selectedRelationship) => {
   if (!ethereumData || typeof ethereumData !== 'object') {
@@ -50,19 +74,30 @@ const handleFilterChange = async (selectedRelationship) => {
     return;
   }
 
-  let filteredData;
+    let filteredData;
+    let setInsights;
+    let setLoading;
+
   switch (selectedRelationship) {
     case 'market_cap_vs_volume':
       filteredData = { market_cap: ethereumData.market_cap, total_volume: ethereumData.total_volume };
+      setInsights = setPolarInsights;
+      setLoading = setLoadingPolar;
       break;
     case 'market_cap_vs_circulating_supply':
       filteredData = { market_cap: ethereumData.market_cap, circulating_supply: ethereumData.circulating_supply };
+      setInsights = setLineInsights;
+      setLoading = setLoadingLine;
       break;
     case 'market_cap_vs_volume_market_cap_change':
         filteredData = { market_cap: ethereumData.market_cap, total_volume: ethereumData.total_volume, market_cap_change_percentage_24h: ethereumData.market_cap_change_percentage_24h };
+        setInsights = setPriceChangeInsights;
+        setLoading = setLoadingPriceChange;
       break;
     case 'market_cap_vs_volume_vs_price':
       filteredData = { market_cap: ethereumData.market_cap, total_volume: ethereumData.total_volume, current_price: ethereumData.current_price };
+      setInsights = setScatterInsights;
+      setLoading = setLoadingScatter;
       break;
     case 'full_metrics_doughnut':
       filteredData = { 
@@ -72,40 +107,27 @@ const handleFilterChange = async (selectedRelationship) => {
         circulating_supply: ethereumData.circulating_supply, 
         total_supply: ethereumData.total_supply
       };
+      setInsights = setDoughnutInsights;
+      setLoading = setLoadingDoughnut;
       break;
     default:
-      filteredData = ethereumData;
-      break;
-  }
+      console.error('Unknown relationship');
+        return;
+    }
+    await fetchChartInsights(filteredData, setInsights, setLoading);
+  };
 
-  // Fetch insights from OpenAI API via backend
-  const insights = await fetchChartInsights(filteredData, selectedRelationship);
-  
-  if (!insights) {
-    console.error('No insights returned from API');
-    return;
-  }
-  
-  // Set the insights to display them below the chart
-  switch (selectedRelationship) {
-    case 'market_cap_vs_volume':
-      setPolarInsights(insights);
-      break;
-    case 'market_cap_vs_circulating_supply':
-      setLineInsights(insights);
-      break;
-    case 'market_cap_vs_volume_market_cap_change':
-        setPriceChangeInsights(insights);
-      break;
-    case 'market_cap_vs_volume_vs_price':
-      setScatterInsights(insights);
-      break;
-    case 'full_metrics_doughnut':
-      setDoughnutInsights(insights);
-      break;
-    default:
-      break;
-  }
+  const LoadingEllipsis = () => {
+  const [dotCount, setDotCount] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setDotCount(prevCount => (prevCount + 1) % 4);
+    }, 500);
+    return () => clearInterval(interval);
+  }, []);
+
+  return <span>{'.'.repeat(dotCount)}</span>;
 };
 
   useEffect(() => {
@@ -1022,28 +1044,40 @@ return (
     )}
   </div>
   <canvas id="ethPolarAreaChart"></canvas>
-  {showPolarChartInfo && (
-    <div className="ethereumchart-details">
-      <p>{polarInsights}</p>
-    </div>
-  )}
-</div>
+  {loadingPolar ? (
+      <div className="loading-indicator">
+        Fetching insights<LoadingEllipsis />
+      </div>
+    ) : (
+      polarInsights && (
+        <div className="ethereumchart-details">
+          <p>{polarInsights}</p>
+        </div>
+      )
+    )}
+  </div>
 
 {/* Doughnut Chart */}
 <div className="ethereumchart-wrapper combined">
   <div className="ethereumchart-header"> {/* Updated to match CSS */}
     <h2>Doughnut Chart for Ethereum Metrics</h2>
-    {doughnutQuery === 'full_metrics' && (
+    {doughnutQuery === 'full_metrics_doughnut' && (
     <span className="ethereuminfo-icon" title="More Information">🤔</span> 
     )}
   </div>
   <canvas id="ethDoughnutChart"></canvas>
-  {showDoughnutChartInfo && (
-    <div className="ethereumchart-details">
-      <p>{doughnutInsights}</p>
-    </div>
-  )}
-</div>
+  {loadingDoughnut ? (
+      <div className="loading-indicator">
+        Fetching insights<LoadingEllipsis />
+      </div>
+    ) : (
+      doughnutInsights && (
+        <div className="ethereumchart-details">
+          <p>{doughnutInsights}</p>
+        </div>
+      )
+    )}
+  </div>
 
 {/* Scatter Chart */}
 <div className="ethereumchart-wrapper combined">
@@ -1054,12 +1088,18 @@ return (
     )}
   </div>
   <canvas id="ethScatterChart"></canvas>
-  {showScatterChartInfo && (
-    <div className="ethereumchart-details">
-      <p>{scatterInsights}</p>
-    </div>
-  )}
-</div>
+  {loadingScatter ? (
+      <div className="loading-indicator">
+        Fetching insights<LoadingEllipsis />
+      </div>
+    ) : (
+      scatterInsights && (
+        <div className="ethereumchart-details">
+          <p>{scatterInsights}</p>
+        </div>
+      )
+    )}
+  </div>
 
 {/* Line Chart */}
 <div className="ethereumchart-wrapper combined">
@@ -1070,12 +1110,18 @@ return (
     )}
   </div>
   <canvas id="ethLineChart"></canvas>
-  {showLineChartInfo && (
-    <div className="ethereumchart-details">
-      <p>{lineInsights}</p>
-    </div>
-  )}
-</div>
+  {loadingLine ? (
+      <div className="loading-indicator">
+        Fetching insights<LoadingEllipsis />
+      </div>
+    ) : (
+      lineInsights && (
+        <div className="ethereumchart-details">
+          <p>{lineInsights}</p>
+        </div>
+      )
+    )}
+  </div>
 
 {/* Combined Chart */}
 <div className="ethereumchart-wrapper combined">
@@ -1086,12 +1132,18 @@ return (
     )}
   </div>
   <canvas id="ethCombinedChart"></canvas>
-  {showCombinedChartInfo && (
-    <div className="ethereumchart-details">
-      <p>{priceChangeInsights}</p>
-    </div>
-  )}
+  {loadingPriceChange ? (
+      <div className="loading-indicator">
+        Fetching insights<LoadingEllipsis />
       </div>
+    ) : (
+      priceChangeInsights && (
+        <div className="ethereumchart-details">
+          <p>{priceChangeInsights}</p>
+        </div>
+      )
+    )}
+  </div>
     </div>
 </div>
   );

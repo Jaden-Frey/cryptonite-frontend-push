@@ -47,7 +47,7 @@
   .chart-wrapper.bar canvas {
     width: 100% !important;
     height: auto !important;
-    max-height: 600px !important;
+    max-height: 550px !important;
   }
   
   .chart-header {

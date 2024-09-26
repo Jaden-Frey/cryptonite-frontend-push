@@ -21,26 +21,50 @@ const DogeCharts = () => {
   const [groupedInsights, setGroupedInsights] = useState("");
   const [stackedInsights, setStackedInsights] = useState("");
 
-  const fetchChartInsights = async (chartData, selectedRelationship) => {
+  const [loadingPolar, setLoadingPolar] = useState(false);
+  const [loadingGrouped, setLoadingGrouped] = useState(false);
+  const [loadingLine, setLoadingLine] = useState(false);
+  const [loadingStacked, setLoadingStacked] = useState(false);
+  const [loadingWaterfall, setLoadingWaterfall] = useState(false);
+
+
+  const isMounted = useRef(true);
+
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
+
+  const fetchChartInsights = async (filteredData, setInsights, setLoading) => {
     try {
+      setLoading(true);
       const response = await fetch('http://localhost:5000/api/generate-insights', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ chartData, selectedRelationship }),
+        body: JSON.stringify({ chartData: filteredData }),
       });
-  
+
       if (!response.ok) {
         throw new Error(`API error: ${response.statusText}`);
       }
-  
+
       const data = await response.json();
-      return data.insights; 
-  
+      if (isMounted.current) {
+        setInsights(data.insights); 
+      }
     } catch (error) {
       console.error('Error during API call:', error);
-      return null;
+      if (isMounted.current) {
+        setInsights(null); 
+      }
+    } finally {
+      if (isMounted.current) {
+        setLoading(false);
+      }
     }
   };    
 
@@ -51,60 +75,64 @@ const DogeCharts = () => {
     }
   
     let filteredData;
+    let setInsights;
+    let setLoading;
+  
     switch (selectedRelationship) {
       case 'market_cap_vs_total_volume':
         filteredData = { market_cap: DogeData.market_cap, total_volume: DogeData.total_volume };
+        setInsights = setPolarInsights;
+        setLoading = setLoadingPolar;
         break;
       case 'market_cap_vs_circulating_supply':
         filteredData = { market_cap: DogeData.market_cap, circulating_supply: DogeData.circulating_supply };
-        break;
-      case 'valuation_metrics':
-        filteredData = { market_cap_change_24h: DogeData.market_cap_change_24h, price_change_percentage_24h: DogeData.price_change_percentage_24h };
+        setInsights = setLineInsights;
+        setLoading = setLoadingLine;
         break;
       case 'grouped_metrics':
-          filteredData = { market_cap: DogeData.market_cap, total_volume: DogeData.total_volume };
+        filteredData = { market_cap: DogeData.market_cap, total_volume: DogeData.total_volume };
+        setInsights = setGroupedInsights;
+        setLoading = setLoadingGrouped;
+        break;
+      case 'valuation_metrics':
+          filteredData = {
+            market_cap_change_24h: DogeData.market_cap_change_24h,
+            price_change_percentage_24h: DogeData.price_change_percentage_24h,
+          };
+          setInsights = setWaterfallInsights;
+          setLoading = setLoadingWaterfall;
           break;
       case 'full_metrics_stacked':
-          filteredData = { 
-            market_cap: DogeData.market_cap, 
-            total_volume: DogeData.total_volume, 
-            circulating_supply: DogeData.circulating_supply
+          filteredData = {
+            market_cap: DogeData.market_cap,
+            total_volume: DogeData.total_volume,
+            circulating_supply: DogeData.circulating_supply,
+            market_cap_change_24h: DogeData.market_cap_change_24h,
+            price_change_percentage_24h: DogeData.price_change_percentage_24h
           };
-        break;
+          setInsights = setStackedInsights;
+          setLoading = setLoadingStacked;
+      break;
       default:
-        filteredData =  DogeData;
-        break;
+        console.error('Unknown relationship');
+        return;
     }
   
-    // Fetch insights from OpenAI API via backend
-    const insights = await fetchChartInsights(filteredData, selectedRelationship);
-    
-    if (!insights) {
-      console.error('No insights returned from API');
-      return;
-    }
-    
-    // Set the insights to display them below the chart
-    switch (selectedRelationship) {
-      case 'market_cap_vs_total_volume':
-        setPolarInsights(insights);
-        break;
-      case 'grouped_metrics':
-          setGroupedInsights(insights);
-          break;
-      case 'market_cap_vs_circulating_supply':
-        setLineInsights(insights);
-        break;
-      case 'valuation_metrics':
-          setWaterfallInsights(insights);
-        break;
-      case 'full_metrics_stacked':
-          setStackedInsights(insights);
-        break;
-      default:
-        break;
-    }
-  };  
+    await fetchChartInsights(filteredData, setInsights, setLoading);
+  };
+  
+  const LoadingEllipsis = () => {
+    const [dotCount, setDotCount] = useState(0);
+  
+    useEffect(() => {
+      const interval = setInterval(() => {
+        setDotCount(prevCount => (prevCount + 1) % 4);
+      }, 500);
+      return () => clearInterval(interval);
+    }, []);
+  
+    return <span>{'.'.repeat(dotCount)}</span>;
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -970,12 +998,18 @@ const [showGroupedChartInfo, setShowGroupedChartInfo] = useState(false);
           )}
         </div>
         <canvas id="dogePolarAreaChart"></canvas>
-        {showPolarChartInfo && (
-          <div className="dogechart-details">
-            <p>{polarInsights}</p>
-          </div>
-        )}
+        {loadingPolar ? (
+      <div className="loading-indicator">
+        Fetching insights<LoadingEllipsis />
       </div>
+    ) : (
+      polarInsights && (
+        <div className="dogechart-details">
+          <p>{polarInsights}</p>
+        </div>
+      )
+    )}
+  </div>
 
       {/* Line Graph */}
       <div className="dogechart-wrapper line">
@@ -986,12 +1020,18 @@ const [showGroupedChartInfo, setShowGroupedChartInfo] = useState(false);
           )}
         </div>
         <canvas id="dogeLineChart"></canvas>
-        {showLineChartInfo && (
-          <div className="dogechart-details">
-            <p>{lineInsights}</p>
-          </div>
-        )}
+        {loadingLine ? (
+      <div className="loading-indicator">
+        Fetching insights<LoadingEllipsis />
       </div>
+    ) : (
+      lineInsights && (
+        <div className="dogechart-details">
+          <p>{lineInsights}</p>
+        </div>
+      )
+    )}
+  </div>
 
       {/* Waterfall Bar Chart */}
       <div className="dogechart-wrapper bar">
@@ -1002,12 +1042,18 @@ const [showGroupedChartInfo, setShowGroupedChartInfo] = useState(false);
           )}
         </div>
         <canvas id="dogeWaterfallBarChart"></canvas>
-        {showWaterfallBarChartInfo && (
-          <div className="dogechart-details">
-            <p>{waterfallInsights}</p>
-          </div>
-        )}
+        {loadingWaterfall ? (
+      <div className="loading-indicator">
+        Fetching insights<LoadingEllipsis />
       </div>
+    ) : (
+      waterfallInsights && (
+        <div className="dogechart-details">
+          <p>{waterfallInsights}</p>
+        </div>
+      )
+    )}
+  </div>
 
       {/* Grouped Bar Chart */}
       <div className="dogechart-wrapper sbar">
@@ -1018,12 +1064,18 @@ const [showGroupedChartInfo, setShowGroupedChartInfo] = useState(false);
           )}
         </div>
         <canvas id="dogeGroupedBarChart"></canvas>
-        {showGroupedChartInfo && (
-          <div className="dogechart-details">
-            <p>{groupedInsights}</p>
-          </div>
-        )}
+        {loadingGrouped ? (
+      <div className="loading-indicator">
+        Fetching insights<LoadingEllipsis />
       </div>
+    ) : (
+      groupedInsights && (
+        <div className="dogechart-details">
+          <p>{groupedInsights}</p>
+        </div>
+      )
+    )}
+  </div>
 
       {/* Stacked Chart */}
       <div className="dogechart-wrapper stacked">
@@ -1034,11 +1086,17 @@ const [showGroupedChartInfo, setShowGroupedChartInfo] = useState(false);
           )}
         </div>
         <canvas id="dogeStackedBarChart"></canvas>
-        {showStackedChartInfo && (
-          <div className="dogechart-details">
-            <p>{stackedInsights}</p>
-          </div>
-        )}
+        {loadingStacked ? (
+      <div className="loading-indicator">
+        Fetching insights<LoadingEllipsis />
+      </div>
+    ) : (
+      stackedInsights && (
+        <div className="dogechart-details">
+          <p>{stackedInsights}</p>
+        </div>
+      )
+    )}
       </div>
     </div>
   </div>

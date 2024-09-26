@@ -19,26 +19,48 @@ const CardanoCharts = () => {
   const [groupedInsights, setGroupedInsights] = useState("");
   const [priceChangeInsights, setPriceChangeInsights] = useState('');
 
-  const fetchChartInsights = async (chartData, selectedRelationship) => {
+  const [loadingPolar, setLoadingPolar] = useState(false);
+  const [loadingGrouped, setLoadingGrouped] = useState(false);
+  const [loadingLine, setLoadingLine] = useState(false);
+  const [loadingPriceChange, setLoadingPriceChange] = useState(false);
+
+  const isMounted = useRef(true);
+
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
+
+  const fetchChartInsights = async (filteredData, setInsights, setLoading) => {
     try {
+      setLoading(true);
       const response = await fetch('http://localhost:5000/api/generate-insights', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ chartData, selectedRelationship }),
+        body: JSON.stringify({ chartData: filteredData }),
       });
-  
+
       if (!response.ok) {
         throw new Error(`API error: ${response.statusText}`);
       }
-  
+
       const data = await response.json();
-      return data.insights; 
-  
+      if (isMounted.current) {
+        setInsights(data.insights); 
+      }
     } catch (error) {
       console.error('Error during API call:', error);
-      return null;
+      if (isMounted.current) {
+        setInsights(null); 
+      }
+    } finally {
+      if (isMounted.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -47,52 +69,56 @@ const CardanoCharts = () => {
       console.error('Invalid or missing Cardano data');
       return;
     }
-  
+
     let filteredData;
+    let setInsights;
+    let setLoading;
+
     switch (selectedRelationship) {
       case 'market_cap_vs_circulating_supply':
         filteredData = { market_cap: CardanoData.market_cap, circulating_supply: CardanoData.circulating_supply };
+        setInsights = setPolarInsights;
+        setLoading = setLoadingPolar;
         break;
       case 'total_volume_vs_circulating_supply':
         filteredData = { total_volume: CardanoData.total_volume, circulating_supply: CardanoData.circulating_supply };
+        setInsights = setLineInsights;
+        setLoading = setLoadingLine;
         break;
       case 'market_cap_vs_total_volume':
-          filteredData = { market_cap: CardanoData.market_cap, total_volume: CardanoData.total_volume };
-          break;
-      case 'market_cap_vs_volume_market_cap_change':
-            filteredData = { market_cap: CardanoData.market_cap, total_volume: CardanoData.total_volume, market_cap_change_percentage_24h: CardanoData.market_cap_change_percentage_24h };
-          break;
-      default:
-        filteredData = CardanoData;
-        break;
-    }
-  
-    // Fetch insights from OpenAI API via backend
-    const insights = await fetchChartInsights(filteredData, selectedRelationship);
-    
-    if (!insights) {
-      console.error('No insights returned from API');
-      return;
-    }
-    
-    // Set the insights to display them below the chart
-    switch (selectedRelationship) {
-      case 'market_cap_vs_circulating_supply':
-        setPolarInsights(insights);
-        break;
-      case 'total_volume_vs_circulating_supply':
-        setLineInsights(insights);
-        break;
-      case 'market_cap_vs_total_volume':
-        setGroupedInsights(insights);
+        filteredData = { market_cap: CardanoData.market_cap, total_volume: CardanoData.total_volume };
+        setInsights = setGroupedInsights;
+        setLoading = setLoadingGrouped;
         break;
       case 'market_cap_vs_volume_market_cap_change':
-        setPriceChangeInsights(insights);
+        filteredData = { 
+          market_cap: CardanoData.market_cap, 
+          total_volume: CardanoData.total_volume, 
+          market_cap_change_percentage_24h: CardanoData.market_cap_change_percentage_24h 
+        };
+        setInsights = setPriceChangeInsights;
+        setLoading = setLoadingPriceChange;
         break;
       default:
-        break;
+        console.error('Unknown relationship');
+        return;
     }
-  };
+
+    await fetchChartInsights(filteredData, setInsights, setLoading);
+};
+
+const LoadingEllipsis = () => {
+  const [dotCount, setDotCount] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setDotCount(prevCount => (prevCount + 1) % 4); 
+    }, 500);
+    return () => clearInterval(interval);
+  }, []);
+
+  return <span>{'.'.repeat(dotCount)}</span>;
+};
 
   useEffect(() => {
     const fetchData = async () => {
@@ -1069,71 +1095,95 @@ const [showPolarChartInfo, setShowPolarChartInfo] = useState(false);
         <canvas id="cardanoHeatmapChart"></canvas>
     </div>
 
-  <div className="cardanochart-container">
-  {/* Polar Area Chart*/}
+    <div className="cardanochart-container">
+  {/* Polar Area Chart */}
   <div className="cardanochart-wrapper polar">
-    <div className="cardanochart-header"> {/* Updated to match CSS */}
+    <div className="cardanochart-header">
       <h2>Polar Area Chart for Cardano KPIs</h2>
       {polarQuery === 'market_cap_vs_circulating_supply' && (
         <span className="cardanoinfo-icon" title="More Information">🤔</span> 
      )}
     </div>
     <canvas id="cardanoPolarAreaChart"></canvas>
-    {showPolarChartInfo && (
-      <div className="cardanochart-details">
-        <p>{polarInsights}</p>
+    {loadingPolar ? (
+      <div className="loading-indicator">
+        Fetching insights<LoadingEllipsis />
       </div>
+    ) : (
+      polarInsights && (
+        <div className="cardanochart-details">
+          <p>{polarInsights}</p>
+        </div>
+      )
     )}
   </div>
 
   {/* Grouped Bar Chart */}
-  <div className="cardanochart-wrapper line">
-        <div className="cardanochart-header">
-          <h2>Grouped Bar Chart for Cardano Metrics</h2>
-          {groupedQuery === 'market_cap_vs_total_volume' && (
-          <span className="cardanoinfo-icon" title="More Information">🤔</span> 
-          )}
+  <div className="cardanochart-wrapper sbar">
+    <div className="cardanochart-header">
+      <h2>Grouped Bar Chart for Cardano Metrics</h2>
+      {groupedQuery === 'market_cap_vs_total_volume' && (
+        <span className="cardanoinfo-icon" title="More Information">🤔</span> 
+      )}
+    </div>
+    <canvas id="cardanoGroupedBarChart"></canvas>
+    {loadingGrouped ? (
+      <div className="loading-indicator">
+        Fetching insights<LoadingEllipsis />
+      </div>
+    ) : (
+      groupedInsights && (
+        <div className="cardanochart-details">
+          <p>{groupedInsights}</p>
         </div>
-        <canvas id="cardanoGroupedBarChart"></canvas>
-        {showGroupedBarChartInfo && (
-          <div className="cardanochart-details">
-            <p>{groupedInsights}</p>
-          </div>
-        )}
+      )
+    )}
   </div>
 
   {/* Line Graph */}
   <div className="cardanochart-wrapper line">
-    <div className="cardanochart-header"> {/* Updated to match CSS */}
+    <div className="cardanochart-header">
       <h2>Line Graph for Cardano Metrics</h2>
       {lineQuery === 'total_volume_vs_circulating_supply' && (
         <span className="cardanoinfo-icon" title="More Information">🤔</span> 
      )}
     </div>
     <canvas id="cardanoLineChart"></canvas>
-    {showLineChartInfo && (
-      <div className="cardanochart-details">
-        <p>{lineInsights}</p>
+    {loadingLine ? (
+      <div className="loading-indicator">
+        Fetching insights<LoadingEllipsis />
       </div>
+    ) : (
+      lineInsights && (
+        <div className="cardanochart-details">
+          <p>{lineInsights}</p>
+        </div>
+      )
     )}
   </div>
 
-  {/* Combined Chart */}
-  <div className="cardanochart-wrapper line">
-    <div className="cardanochart-header"> {/* Updated to match CSS */}
+  {/* Combined Bar and Line Graph */}
+  <div className="cardanochart-wrapper sbar">
+    <div className="cardanochart-header">
       <h2>Combined Bar and Line Graph Representing Cardano's Market Volatility</h2>
-      {(combinedQuery === 'market_cap_vs_volume_market_cap_change') && (
-      <span className="cardanoinfo-icon" title="More Information">🤔</span> 
-    )}
+      {combinedQuery === 'market_cap_vs_volume_market_cap_change' && (
+        <span className="cardanoinfo-icon" title="More Information">🤔</span> 
+      )}
     </div>
     <canvas id="cardanoCombinedChart"></canvas>
-    {showCombinedChartInfo && (
-      <div className="cardanochart-details">
-        <p>{priceChangeInsights}</p>
+    {loadingPriceChange ? (
+      <div className="loading-indicator">
+        Fetching insights<LoadingEllipsis />
       </div>
+    ) : (
+      priceChangeInsights && (
+        <div className="cardanochart-details">
+          <p>{priceChangeInsights}</p>
+        </div>
+      )
     )}
+      </div>
     </div>
-  </div>
   </div>
 </div>
   );

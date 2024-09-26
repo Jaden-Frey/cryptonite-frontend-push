@@ -18,29 +18,52 @@ const PolkadotCharts = () => {
   const [polarInsights, setPolarInsights] = useState("");
   const [doughnutInsights, setDoughnutInsights] = useState("");
   const [lineInsights, setLineInsights] = useState("");
-  const [combinedInsights, setCombinedInsights] = useState("");
+  const [priceChangeInsights, setPriceChangeInsights] = useState("");
   const [stackedInsights, setStackedInsights] = useState("");
 
-  const fetchChartInsights = async (chartData, selectedRelationship) => {
+  const [loadingPolar, setLoadingPolar] = useState(false);
+  const [loadingPriceChange, setLoadingPriceChange] = useState(false);
+  const [loadingLine, setLoadingLine] = useState(false);
+  const [loadingStacked, setLoadingStacked] = useState(false);
+  const [loadingDoughnut, setLoadingDoughnut] = useState(false);
+
+  const isMounted = useRef(true);
+
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
+
+  const fetchChartInsights = async (filteredData, setInsights, setLoading) => {
     try {
+      setLoading(true);
       const response = await fetch('http://localhost:5000/api/generate-insights', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ chartData, selectedRelationship }),
+        body: JSON.stringify({ chartData: filteredData }),
       });
-  
+
       if (!response.ok) {
         throw new Error(`API error: ${response.statusText}`);
       }
-  
+
       const data = await response.json();
-      return data.insights; 
-  
+      if (isMounted.current) {
+        setInsights(data.insights); 
+      }
     } catch (error) {
       console.error('Error during API call:', error);
-      return null;
+      if (isMounted.current) {
+        setInsights(null); 
+      }
+    } finally {
+      if (isMounted.current) {
+        setLoading(false);
+      }
     }
   };    
 
@@ -49,20 +72,31 @@ const PolkadotCharts = () => {
       console.error('Invalid or missing Polkadot data');
       return;
     }
-  
+
     let filteredData;
+    let setInsights;
+    let setLoading
+  
     switch (selectedRelationship) {
       case 'market_cap_vs_total_volume':
         filteredData = { market_cap: polkadotData.market_cap, total_volume: polkadotData.total_volume };
+        setInsights = setPolarInsights;
+        setLoading = setLoadingPolar;
         break;
       case 'market_cap_vs_circulating_supply':
         filteredData = { market_cap: polkadotData.market_cap, circulating_supply: polkadotData.circulating_supply };
+        setInsights = setLineInsights;
+        setLoading = setLoadingLine;
         break;
       case 'market_cap_vs_volume_market_cap_change':
           filteredData = { market_cap: polkadotData.market_cap, total_volume: polkadotData.total_volume, market_cap_change_percentage_24h: polkadotData.market_cap_change_percentage_24h };
+          setInsights = setPriceChangeInsights;
+          setLoading = setLoadingPriceChange;
         break;
         case 'volume_vs_supply':
           filteredData = { market_cap: polkadotData.market_cap, circulating_supply: polkadotData.circulating_supply, market_cap: polkadotData.total_supply };
+          setInsights = setDoughnutInsights;
+          setLoading = setLoadingDoughnut;
         break;
         case 'full_metrics_stacked':
           filteredData = [
@@ -82,41 +116,28 @@ const PolkadotCharts = () => {
               total_supply: polkadotData.total_supply
             }
           ];
+          setInsights = setStackedInsights;
+          setLoading = setLoadingStacked;
           break;        
         default:
-        filteredData =  polkadotData;
-        break;
-    }
-  
-    // Fetch insights from OpenAI API via backend
-    const insights = await fetchChartInsights(filteredData, selectedRelationship);
+          console.error('Unknown relationship');
+          return;
+      }
+      await fetchChartInsights(filteredData, setInsights, setLoading);
+    }; 
+
+    const LoadingEllipsis = () => {
+    const [dotCount, setDotCount] = useState(0);
     
-    if (!insights) {
-      console.error('No insights returned from API');
-      return;
-    }
+      useEffect(() => {
+        const interval = setInterval(() => {
+          setDotCount(prevCount => (prevCount + 1) % 4);
+        }, 500);
+        return () => clearInterval(interval);
+      }, []);
     
-    // Set the insights to display them below the chart
-    switch (selectedRelationship) {
-      case 'market_cap_vs_total_volume':
-        setPolarInsights(insights);
-        break;
-      case 'market_cap_vs_volume_market_cap_change':
-          setCombinedInsights(insights);
-          break;
-      case 'market_cap_vs_circulating_supply':
-        setLineInsights(insights);
-        break;
-      case 'volume_vs_supply':
-          setDoughnutInsights(insights);
-        break;
-      case 'full_metrics_stacked':
-          setStackedInsights(insights);
-        break;
-      default:
-        break;
-    }
-  };  
+      return <span>{'.'.repeat(dotCount)}</span>;
+    };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -609,9 +630,9 @@ createChart(polStackedBarChartRef, polStackedBarChartCtx, {
       let lineDataValues = [];
   
       switch (query) {
-        case "market_cap_vs_volume":
-          lineLabels = ['Market Cap', 'Total Volume'];
-          lineDataValues = [polkadotData.market_cap, polkadotData.total_volume];
+        case "market_cap_vs_circulating_supply":
+          lineLabels = ['Market Cap', 'Circulating Supply'];
+          lineDataValues = [polkadotData.market_cap, polkadotData.circulating_supply];
           break;
         case "full_metrics_line":
           lineLabels = ['Current Price', 'Market Cap', 'Total Volume', 'Circulating Supply'];
@@ -1124,12 +1145,18 @@ const toggleDoughnutChartInfo = () => setShowDoughnutChartInfo((prev) => !prev);
      )}
   </div>
   <canvas id="polPolarAreaChart"></canvas>
-  {showPolarChartInfo && (
-    <div className="polkadotchart-details">
-      <p>{polarInsights}</p>
-    </div>
-  )}
-</div>
+  {loadingPolar ? (
+      <div className="loading-indicator">
+        Fetching insights<LoadingEllipsis />
+      </div>
+    ) : (
+      polarInsights && (
+        <div className="polkadotchart-details">
+          <p>{polarInsights}</p>
+        </div>
+      )
+    )}
+  </div>
 
 {/* Doughnut Chart */}
 <div className="polkadotchart-wrapper gbar">
@@ -1140,12 +1167,19 @@ const toggleDoughnutChartInfo = () => setShowDoughnutChartInfo((prev) => !prev);
     )}
   </div>
   <canvas id="polDoughnutChart"></canvas>
-  {showDoughnutChartInfo && (
-    <div className="polkadotchart-details">
-      <p>{doughnutInsights}</p>
-    </div>
-  )}
-</div>
+  {loadingDoughnut ? (
+      <div className="loading-indicator">
+        Fetching insights<LoadingEllipsis />
+      </div>
+    ) : (
+      doughnutInsights && (
+        <div className="polkadotchart-details">
+          <p>{doughnutInsights}</p>
+        </div>
+      )
+    )}
+  </div>
+
         {/* Combined Chart*/}
         <div className="polkadotchart-wrapper gbar">
           <div className="polkadotchart-header">
@@ -1155,12 +1189,18 @@ const toggleDoughnutChartInfo = () => setShowDoughnutChartInfo((prev) => !prev);
             )}
           </div>
           <canvas id="polCombinedChart"></canvas>
-          {showCombinedChartInfo && (
-            <div className="polkadotchart-details">
-              <p>{combinedInsights}</p>
-            </div>
-          )}
+          {loadingPriceChange ? (
+      <div className="loading-indicator">
+        Fetching insights<LoadingEllipsis />
+      </div>
+    ) : (
+      priceChangeInsights && (
+        <div className="polkadotchart-details">
+          <p>{priceChangeInsights}</p>
         </div>
+      )
+    )}
+  </div>
 
         {/* Line Chart */}
         <div className="polkadotchart-wrapper li">
@@ -1171,12 +1211,18 @@ const toggleDoughnutChartInfo = () => setShowDoughnutChartInfo((prev) => !prev);
             )}
           </div>
           <canvas id="polLineChart"></canvas>
-          {showLineChartInfo && (
-            <div className="polkadotchart-details">
-              <p>{lineInsights}</p>
-            </div>
-          )}
+          {loadingLine ? (
+          <div className="loading-indicator">
+        Fetching insights<LoadingEllipsis />
         </div>
+    ) : (
+    lineInsights && (
+        <div className="polkadotchart-details">
+          <p>{lineInsights}</p>
+        </div>
+      )
+    )}
+  </div>
 
         {/* Stacked Bar Chart*/}
         <div className="polkadotchart-wrapper stacks">
@@ -1187,11 +1233,17 @@ const toggleDoughnutChartInfo = () => setShowDoughnutChartInfo((prev) => !prev);
             )}
           </div>
           <canvas id="polStackedBarChart"></canvas>
-          {showStackedChartInfo && (
-            <div className="polkadotchart-details">
-              <p>{stackedInsights}</p>
-            </div>
-          )}
+          {loadingStacked ? (
+      <div className="loading-indicator">
+        Fetching insights<LoadingEllipsis />
+      </div>
+    ) : (
+      stackedInsights && (
+        <div className="polkadotchart-details">
+          <p>{stackedInsights}</p>
+        </div>
+      )
+    )}
         </div>
       </div>
     </div>

@@ -21,92 +21,118 @@ const BitcoinCharts = () => {
   const [lineInsights, setLineInsights] = useState("");
   const [waterfallBarInsights, setWaterfallBarInsights] = useState("");
 
-  const fetchChartInsights = async (chartData, selectedRelationship) => {
+  const [loadingPolar, setLoadingPolar] = useState(false);
+  const [loadingScatter, setLoadingScatter] = useState(false);
+  const [loadingLine, setLoadingLine] = useState(false);
+  const [loadingDoughnut, setLoadingDoughnut] = useState(false);
+  const [loadingWaterfall, setLoadingWaterfall] = useState(false);
+
+  const isMounted = useRef(true);
+
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
+
+  const fetchChartInsights = async (filteredData, setInsights, setLoading) => {
     try {
+      setLoading(true);
       const response = await fetch('http://localhost:5000/api/generate-insights', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ chartData, selectedRelationship }),
+        body: JSON.stringify({ chartData: filteredData }),
       });
-  
+
       if (!response.ok) {
         throw new Error(`API error: ${response.statusText}`);
       }
-  
+
       const data = await response.json();
-      return data.insights; 
-  
+      if (isMounted.current) {
+        setInsights(data.insights); 
+      }
     } catch (error) {
       console.error('Error during API call:', error);
-      return null;
+      if (isMounted.current) {
+        setInsights(null); 
+      }
+    } finally {
+      if (isMounted.current) {
+        setLoading(false);
+      }
     }
-  };    
+  };
   
   const handleFilterChange = async (selectedRelationship) => {
     if (!bitcoinData || typeof bitcoinData !== 'object') {
       console.error('Invalid or missing Bitcoin data');
       return;
     }
-  
+
     let filteredData;
+    let setInsights;
+    let setLoading;
+
     switch (selectedRelationship) {
       case 'market_cap_vs_volume':
         filteredData = { market_cap: bitcoinData.market_cap, total_volume: bitcoinData.total_volume };
+        setInsights = setPolarInsights;
+        setLoading = setLoadingPolar;
         break;
       case 'market_cap_vs_circulating_supply':
         filteredData = { market_cap: bitcoinData.market_cap, circulating_supply: bitcoinData.circulating_supply };
+        setInsights = setLineInsights;
+        setLoading = setLoadingLine;
         break;
       case 'valuation_metrics':
         filteredData = { market_cap_change_24h: bitcoinData.market_cap_change_24h, price_change_percentage_24h: bitcoinData.price_change_percentage_24h };
+        setInsights = setWaterfallBarInsights;
+        setLoading = setLoadingWaterfall;
         break;
       case 'market_cap_vs_volume_vs_price':
-        filteredData = { market_cap: bitcoinData.market_cap, total_volume: bitcoinData.total_volume, current_price: bitcoinData.current_price };
+        filteredData = {
+          market_cap: bitcoinData.market_cap,
+          total_volume: bitcoinData.total_volume,
+          current_price: bitcoinData.current_price,
+        };
+        setInsights = setScatterInsights;
+        setLoading = setLoadingScatter;
         break;
       case 'full_metrics_doughnut':
-        filteredData = { 
+        filteredData = {
           market_cap: bitcoinData.market_cap, 
           total_volume: bitcoinData.total_volume, 
           current_price: bitcoinData.current_price, 
           circulating_supply: bitcoinData.circulating_supply, 
           total_supply: bitcoinData.total_supply
         };
+        setInsights = setDoughnutInsights;
+        setLoading = setLoadingDoughnut;
         break;
       default:
-        filteredData = bitcoinData;
-        break;
+        console.error('Unknown relationship');
+        return;
     }
-  
-    // Fetch insights from OpenAI API via backend
-    const insights = await fetchChartInsights(filteredData, selectedRelationship);
-    
-    if (!insights) {
-      console.error('No insights returned from API');
-      return;
-    }
-    
-    // Set the insights to display them below the chart
-    switch (selectedRelationship) {
-      case 'market_cap_vs_volume':
-        setPolarInsights(insights);
-        break;
-      case 'market_cap_vs_circulating_supply':
-        setLineInsights(insights);
-        break;
-      case 'valuation_metrics':
-        setWaterfallBarInsights(insights);
-        break;
-      case 'market_cap_vs_volume_vs_price':
-        setScatterInsights(insights);
-        break;
-      case 'full_metrics_doughnut':
-        setDoughnutInsights(insights);
-        break;
-      default:
-        break;
-    }
-  };    
+
+    await fetchChartInsights(filteredData, setInsights, setLoading);
+  };
+
+  const LoadingEllipsis = () => {
+  const [dotCount, setDotCount] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setDotCount(prevCount => (prevCount + 1) % 4); 
+    }, 500);
+    return () => clearInterval(interval);
+  }, []);
+
+  return <span>{'.'.repeat(dotCount)}</span>;
+};    
 
   useEffect(() => {
     const fetchData = async () => {
@@ -938,12 +964,18 @@ return (
             )}
           </div>
           <canvas id="btcPolarAreaChart"></canvas>
-          {showPolarChartInfo && (
+          {loadingPolar ? (
+          <div className="loading-indicator">
+            Fetching insights<LoadingEllipsis />
+          </div>
+        ) : (
+          polarInsights && (
             <div className="bitcoinchart-details">
               <p>{polarInsights}</p>
             </div>
-          )}
-        </div>
+          )
+        )}
+    </div>
 
         {/* Doughnut Chart */}
         <div className="bitcoinchart-wrapper bar">
@@ -954,12 +986,18 @@ return (
             )}
           </div>
           <canvas id="btcDoughnutChart"></canvas>
-          {showDoughnutChartInfo && (
+          {loadingDoughnut ? (
+          <div className="loading-indicator">
+            Fetching insights<LoadingEllipsis />
+          </div>
+        ) : (
+          doughnutInsights && (
             <div className="bitcoinchart-details">
               <p>{doughnutInsights}</p>
             </div>
-          )}
-        </div>
+          )
+        )}
+    </div>
 
         {/* Scatter Chart */}
         <div className="bitcoinchart-wrapper bar">
@@ -970,12 +1008,18 @@ return (
             )}
           </div>
           <canvas id="btcScatterChart"></canvas>
-          {showScatterChartInfo && (
+          {loadingScatter ? (
+          <div className="loading-indicator"> 
+            Fetching insights<LoadingEllipsis />
+          </div>
+        ) : (
+          scatterInsights && (
             <div className="bitcoinchart-details">
               <p>{scatterInsights}</p>
             </div>
-          )}
-        </div>
+          )
+        )}
+    </div>
 
         {/* Line Chart */}
         <div className="bitcoinchart-wrapper bar">
@@ -986,12 +1030,18 @@ return (
             )}
           </div>
           <canvas id="btcLineChart"></canvas>
-          {showLineChartInfo && (
+          {loadingLine ? (
+          <div className="loading-indicator">
+            Fetching insights<LoadingEllipsis />
+          </div>
+        ) : (
+          lineInsights && (
             <div className="bitcoinchart-details">
               <p>{lineInsights}</p>
             </div>
-          )}
-        </div>
+          )
+        )}
+    </div>
 
         {/* Waterfall Bar Chart */}
         <div className="bitcoinchart-wrapper bar">
@@ -1002,11 +1052,17 @@ return (
             )}
           </div>
           <canvas id="btcWaterfallBarChart"></canvas>
-          {showWaterfallBarChartInfo && (
+          {loadingWaterfall ? (
+          <div className="loading-indicator">
+            Fetching insights<LoadingEllipsis />
+          </div>
+        ) : (
+          waterfallBarInsights && (
             <div className="bitcoinchart-details">
               <p>{waterfallBarInsights}</p>
             </div>
-          )}
+          )
+        )}
         </div>
       </div>
     </div>

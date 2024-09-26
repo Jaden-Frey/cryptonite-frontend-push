@@ -34,7 +34,7 @@
   .dogechart-container canvas {
     width: 100%;
     height: auto;
-    max-height: 600px; 
+    max-height: 550px; 
   }
   
   .dogechart-wrapper h2 {
@@ -52,7 +52,7 @@
   .dogechart-wrapper.bar canvas {
     width: 100% !important;
     height: auto !important;
-    max-height: 600px !important; 
+    max-height: 550px !important; 
   } 
 
   .dogechart-wrapper.stacked {
@@ -63,7 +63,7 @@
   .dogechart-wrapper.stacked canvas {
     width: 100% !important;
     height: auto !important;
-    max-height: 600px !important; 
+    max-height: 550px !important; 
   } 
 
   .dogechart-wrapper.sbar{
@@ -74,7 +74,7 @@
   .dogechart-wrapper.sbar canvas {
     width: 100% !important;
     height: auto !important;
-    max-height: 600px !important; 
+    max-height: 550px !important; 
   } 
 
   .dogechart-wrapper.polar{
@@ -85,7 +85,7 @@
   .dogechart-wrapper.polar canvas {
     width: 100% !important;
     height: auto !important;
-    max-height: 600px !important; 
+    max-height: 550px !important; 
   } 
   
   .dogechart-wrapper.line {
@@ -96,7 +96,7 @@
   .dogechart-wrapper.line canvas {
     width: 100% !important;
     height: auto !important;
-    max-height: 600px !important; 
+    max-height: 550px !important; 
   }
 
   .dogequery-container {
@@ -166,4 +166,20 @@
   right: 25px;
   transition: transform 0.3s ease;
 }
-  
+
+.loading-indicator {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-size: 1.25em;
+  font-size: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #010b13; 
+  margin-top: 10px;
+}
+
+.loading-indicator span {
+  margin-left: 5px;
+  font-weight: bold;
+  letter-spacing: 1px;
+}

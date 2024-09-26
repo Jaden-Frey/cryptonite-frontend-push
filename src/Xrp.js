@@ -22,14 +22,29 @@ const XrpCharts = () => {
   const xrpPolarAreaChartRef = useRef(null);
   const xrpStackedBarChartRef = useRef(null);
 
-  const fetchChartInsights = async (chartData, selectedRelationship) => {
+  const [loadingPolar, setLoadingPolar] = useState(false);
+  const [loadingStacked, setLoadingStacked] = useState(false);
+  const [loadingLine, setLoadingLine] = useState(false);
+  const [loadingWaterfall, setLoadingWaterfall] = useState(false);
+
+  const isMounted = useRef(true);
+
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
+
+  const fetchChartInsights = async (filteredData, setInsights, setLoading) => {
     try {
+      setLoading(true);
       const response = await fetch('http://localhost:5000/api/generate-insights', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ chartData, selectedRelationship }),
+        body: JSON.stringify({ chartData: filteredData }),
       });
   
       if (!response.ok) {
@@ -37,13 +52,20 @@ const XrpCharts = () => {
       }
   
       const data = await response.json();
-      return data.insights; 
-  
+      if (isMounted.current) {
+        setInsights(data.insights);
+      }
     } catch (error) {
       console.error('Error during API call:', error);
-      return null;
+      if (isMounted.current) {
+        setInsights(null);
+      }
+    } finally {
+      if (isMounted.current) {
+        setLoading(false);
+      }
     }
-  };    
+  };
 
   const handleFilterChange = async (selectedRelationship) => {
     if (!xrpData || typeof xrpData !== 'object') {
@@ -52,53 +74,56 @@ const XrpCharts = () => {
     }
   
     let filteredData;
-    switch (selectedRelationship) {
-      case 'market_cap_vs_total_volume':
-        filteredData = { market_cap: xrpData.market_cap, circulating_supply: xrpData.circulating_supply };
-        break;
-
-      case 'market_cap_vs_circulating_supply':
-          filteredData = { 
-            market_cap: xrpData.market_cap, 
-            circulating_supply: xrpData.circulating_supply
-          };
-        break;
-
-     case 'valuation_metrics':
-      filteredData = { market_cap_change_24h: xrpData.market_cap_change_24h, price_change_percentage_24h: xrpData.price_change_percentage_24h };
-        break;
-          
-      case 'total_volume_vs_circulating_supply':
-        filteredData = { total_volume: xrpData.total_volume, circulating_supply: xrpData.circulating_supply };
-        break;
-      default:
-        filteredData = xrpData;
-        break;
-    }
+    let setInsights;
+    let setLoading;
   
-    const insights = await fetchChartInsights(filteredData, selectedRelationship);
-    
-    if (!insights) {
-      console.error('No insights returned from API');
-      return;
-    }
-    
     switch (selectedRelationship) {
-      case 'market_cap_vs_total_volume':
-        setPolarInsights(insights);
+      case 'market_cap_vs_volume':
+        filteredData = { market_cap: xrpData.market_cap, total_volume: xrpData.total_volume };
+        setInsights = setPolarInsights;
+        setLoading = setLoadingPolar;
         break;
-      case 'total_volume_vs_circulating_supply':
-        setLineInsights(insights);
+      case 'market_cap_vs_circulating_supply':
+        filteredData = { market_cap: xrpData.market_cap, circulating_supply: xrpData.circulating_supply };
+        setInsights = setStackedInsights;
+        setLoading = setLoadingStacked;
         break;
       case 'valuation_metrics':
-        setWaterfallInsights(insights);
+        filteredData = {
+          market_cap_change_24h: xrpData.market_cap_change_24h,
+          price_change_percentage_24h: xrpData.price_change_percentage_24h,
+        };
+        setInsights = setWaterfallInsights;
+        setLoading = setLoadingWaterfall;
         break;
-      case 'market_cap_vs_circulating_supply':
-        setStackedInsights(insights);
-        break;
+      case 'total_volume_vs_circulating_supply':
+      filteredData = {
+        total_volume: xrpData.total_volume,
+        circulating_supply: xrpData.circulating_supply,
+      };
+      setInsights = setLineInsights; 
+      setLoading = setLoadingLine; 
+      break;
+
       default:
-        break;
+        console.error('Unknown relationship');
+        return;
     }
+  
+    await fetchChartInsights(filteredData, setInsights, setLoading);
+  };
+
+  const LoadingEllipsis = () => {
+    const [dotCount, setDotCount] = useState(0);
+  
+    useEffect(() => {
+      const interval = setInterval(() => {
+        setDotCount(prevCount => (prevCount + 1) % 4); 
+      }, 500);
+      return () => clearInterval(interval);
+    }, []);
+  
+    return <span>{'.'.repeat(dotCount)}</span>;
   };
 
   useEffect(() => {
@@ -832,10 +857,16 @@ return (
           )}
         </div>
         <canvas id="xrpPolarAreaChart"></canvas>
-        {showPolarChartInfo && (
-          <div className="xrpchart-details">
-            <p>{polarInsights}</p>
+        {loadingPolar ? (
+          <div className="loading-indicator">
+            Fetching insights<LoadingEllipsis />
           </div>
+        ) : (
+          polarInsights && (
+            <div className="xrpchart-details">
+              <p>{polarInsights}</p>
+            </div>
+          )
         )}
       </div>
 
@@ -848,10 +879,16 @@ return (
           )}
         </div>
         <canvas id="xrpStackedBarChart"></canvas>
-        {showStackedChartInfo && (
-          <div className="xrpchart-details">
-            <p>{stackedInsights}</p>
+        {loadingStacked ? (
+          <div className="loading-indicator">
+            Fetching insights<LoadingEllipsis />
           </div>
+        ) : (
+          stackedInsights && (
+            <div className="xrpchart-details">
+              <p>{stackedInsights}</p>
+            </div>
+          )
         )}
       </div>
 
@@ -864,10 +901,16 @@ return (
           )}
         </div>
         <canvas id="xrpLineChart"></canvas>
-        {showLineChartInfo && (
-          <div className="xrpchart-details">
-            <p>{lineInsights}</p>
+        {loadingLine ? (
+          <div className="loading-indicator">
+            Fetching insights<LoadingEllipsis />
           </div>
+        ) : (
+          lineInsights && (
+            <div className="xrpchart-details">
+              <p>{lineInsights}</p>
+            </div>
+          )
         )}
       </div>
 
@@ -880,13 +923,18 @@ return (
           )}
         </div>
         <canvas id="xrpWaterfallBarChart"></canvas>
-        {showWaterfallBarChartInfo && (
-          <div className="xrpchart-details">
-            <p>{waterfallInsights}</p>
+        {loadingWaterfall ? (
+          <div className="loading-indicator">
+            Fetching insights<LoadingEllipsis />
           </div>
+        ) : (
+          waterfallInsights && (
+            <div className="xrpchart-details">
+              <p>{waterfallInsights}</p>
+            </div>
+          )
         )}
       </div>
-
     </div>
   </div>
 );

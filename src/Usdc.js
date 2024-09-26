@@ -19,14 +19,29 @@ const UsdcCharts = () => {
   const [waterfallInsights, setWaterfallInsights] = useState("");
   const [radarInsights, setRadarInsights] = useState("");
 
-  const fetchChartInsights = async (chartData, selectedRelationship) => {
+  const [loadingPolar, setLoadingPolar] = useState(false);
+  const [loadingRadar, setLoadingRadar] = useState(false);
+  const [loadingLine, setLoadingLine] = useState(false);
+  const [loadingWaterfall, setLoadingWaterfall] = useState(false);
+
+  const isMounted = useRef(true);
+
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
+  
+  const fetchChartInsights = async (filteredData, setInsights, setLoading) => {
     try {
+      setLoading(true);
       const response = await fetch('http://localhost:5000/api/generate-insights', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ chartData, selectedRelationship }),
+        body: JSON.stringify({ chartData: filteredData }),
       });
   
       if (!response.ok) {
@@ -34,14 +49,21 @@ const UsdcCharts = () => {
       }
   
       const data = await response.json();
-      return data.insights; 
-  
+      if (isMounted.current) {
+        setInsights(data.insights);
+      }
     } catch (error) {
       console.error('Error during API call:', error);
-      return null;
+      if (isMounted.current) {
+        setInsights(null);
+      }
+    } finally {
+      if (isMounted.current) {
+        setLoading(false);
+      }
     }
-  };    
-
+  };
+  
   const handleFilterChange = async (selectedRelationship) => {
     if (!usdcData || typeof usdcData !== 'object') {
       console.error('Invalid or missing USDC data');
@@ -49,55 +71,57 @@ const UsdcCharts = () => {
     }
   
     let filteredData;
-    switch (selectedRelationship) {
-      case 'market_cap_vs_total_volume':
-        filteredData = { market_cap: usdcData.market_cap, circulating_supply: usdcData.circulating_supply };
-        break;
-
-      case 'full_metrics_radar':
-          filteredData = { 
-            market_cap: usdcData.market_cap, 
-            total_volume: usdcData.total_volume, 
-            current_price: usdcData.current_price,
-            circulating_supply: usdcData.circulating_supply
-          };
-        break;
-
-     case 'valuation_metrics':
-      filteredData = { market_cap_change_24h: usdcData.market_cap_change_24h, price_change_percentage_24h: usdcData.price_change_percentage_24h };
-        break;
-          
-      case 'market_cap_vs_volume_vs_price':
-        filteredData = { market_cap: usdcData.market_cap, total_volume: usdcData.total_volume, current_price: usdcData.current_price };
-        break;
-      default:
-        filteredData = usdcData;
-        break;
-    }
+    let setInsights;
+    let setLoading;
   
-    const insights = await fetchChartInsights(filteredData, selectedRelationship);
-    
-    if (!insights) {
-      console.error('No insights returned from API');
-      return;
-    }
-    
     switch (selectedRelationship) {
-      case 'market_cap_vs_circulating_supply':
-        setPolarInsights(insights);
-        break;
       case 'market_cap_vs_total_volume':
-        setLineInsights(insights);
+        filteredData = { market_cap: usdcData.market_cap, total_volume: usdcData.total_volume };
+        setInsights = setLineInsights;
+        setLoading = setLoadingLine;
+        break;
+      case 'market_cap_vs_circulating_supply':
+        filteredData = { market_cap: usdcData.market_cap, circulating_supply: usdcData.circulating_supply };
+        setInsights = setPolarInsights;
+        setLoading = setLoadingPolar;
+        break;
+      case 'full_metrics_radar':
+        filteredData = {
+          market_cap: usdcData.market_cap,
+          total_volume: usdcData.total_volume,
+          current_price: usdcData.current_price,
+          circulating_supply: usdcData.circulating_supply,
+        };
+        setInsights = setRadarInsights;
+        setLoading = setLoadingRadar;
         break;
       case 'valuation_metrics':
-        setWaterfallInsights(insights);
-        break;
-      case 'full_metrics_radar':
-        setRadarInsights(insights);
+        filteredData = {
+          market_cap_change_24h: usdcData.market_cap_change_24h,
+          price_change_percentage_24h: usdcData.price_change_percentage_24h,
+        };
+        setInsights = setWaterfallInsights;
+        setLoading = setLoadingWaterfall;
         break;
       default:
-        break;
+        console.error('Unknown relationship');
+        return;
     }
+  
+    await fetchChartInsights(filteredData, setInsights, setLoading);
+  };
+
+  const LoadingEllipsis = () => {
+    const [dotCount, setDotCount] = useState(0);
+  
+    useEffect(() => {
+      const interval = setInterval(() => {
+        setDotCount(prevCount => (prevCount + 1) % 4); 
+      }, 500);
+      return () => clearInterval(interval);
+    }, []);
+  
+    return <span>{'.'.repeat(dotCount)}</span>;
   };
 
   useEffect(() => {
@@ -773,10 +797,16 @@ return (
           )}
         </div>
         <canvas id="usdcPolarAreaChart"></canvas>
-        {showPolarChartInfo && (
-          <div className="usdcchart-details">
-            <p>{polarInsights}</p>
+        {loadingPolar ? (
+          <div className="loading-indicator">
+            Fetching insights<LoadingEllipsis />
           </div>
+        ) : (
+          polarInsights && (
+            <div className="usdcchart-details">
+              <p>{polarInsights}</p>
+            </div>
+          )
         )}
       </div>
 
@@ -789,10 +819,16 @@ return (
           )}
         </div>
         <canvas id="usdcRadarChart"></canvas>
-        {showRadarChartInfo && (
-          <div className="usdcchart-details">
-            <p>{radarInsights}</p>
+        {loadingRadar ? (
+          <div className="loading-indicator">
+            Fetching insights<LoadingEllipsis />
           </div>
+        ) : (
+          radarInsights && (
+            <div className="usdcchart-details">
+              <p>{radarInsights}</p>
+            </div>
+          )
         )}
       </div>
 
@@ -805,12 +841,18 @@ return (
       )}
     </div>
     <canvas id="usdcLineChart"></canvas>
-    {showLineChartInfo && (
-      <div className="usdcchart-details">
-        <p>{lineInsights}</p>
+    {loadingLine ? (
+          <div className="loading-indicator">
+            Fetching insights<LoadingEllipsis />
+          </div>
+        ) : (
+          lineInsights && (
+            <div className="usdcchart-details">
+              <p>{lineInsights}</p>
+            </div>
+          )
+        )}
       </div>
-    )}
-    </div>
 
       {/* Waterfall Bar Chart */}
       <div className="usdcchart-wrapper bar">
@@ -821,16 +863,21 @@ return (
           )}
         </div>
         <canvas id="usdcWaterfallBarChart"></canvas>
-        {showWaterfallBarChartInfo && (
-          <div className="usdcchart-details">
-            <p>{waterfallInsights}</p>
+        {loadingWaterfall ? (
+          <div className="loading-indicator">
+            Fetching insights<LoadingEllipsis />
           </div>
+        ) : (
+          waterfallInsights && (
+            <div className="usdcchart-details">
+              <p>{waterfallInsights}</p>
+            </div>
+          )
         )}
       </div>
-
     </div>
   </div>
 );
-};
+}
 
 export default UsdcCharts;
