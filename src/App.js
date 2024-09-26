@@ -19,7 +19,7 @@ import "./Questionmark.css";
 
 function App() {
   const [loading, setLoading] = useState(true);
-  const [authenticated, setAuthenticated] = useState(true);
+  const [authenticated, setAuthenticated] = useState(false); 
 
   const checkAuthentication = async () => {
     try {
@@ -27,18 +27,24 @@ function App() {
         method: 'GET',
         credentials: 'include',
       });
-      const data = await response.json();
-      setAuthenticated(data.authenticated);
+      if (response.ok) {
+        const data = await response.json();
+        setAuthenticated(data.authenticated);
+      } else {
+        setAuthenticated(false); 
+      }
     } catch (error) {
       console.error('Error checking authentication:', error);
+      setAuthenticated(false); 
     } finally {
-      setLoading(false);
+      setLoading(false); 
     }
   };
 
   useEffect(() => {
     checkAuthentication();
   }, []);
+
 
   if (loading) {
     return <Spinner />;
