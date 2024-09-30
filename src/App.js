@@ -16,10 +16,26 @@ import ProtectedRoute from "./ProtectedRoute";
 import Spinner from "./Spinner";
 import IconComponent from "./IconBackground";
 import "./Questionmark.css";
+import axios from 'axios';
 
 function App() {
   const [loading, setLoading] = useState(true);
   const [authenticated, setAuthenticated] = useState(false); 
+
+const logout = async () => {
+  try {
+    const response = await axios.post('http://localhost:5000/logout', {}, { withCredentials: true });
+
+    if (response.status === 200) {
+      console.log(response.data.message);
+      window.location.href = 'http://localhost:5000/login';
+    } else {
+      console.error('Logout failed:', response.data.message);
+    }
+  } catch (error) {
+    console.error('Error:', error.response ? error.response.data.message : error.message);
+  }
+};
 
   const checkAuthentication = async () => {
     try {
@@ -54,17 +70,17 @@ function App() {
     <Router>
       <div className="App">
         <IconComponent />
-        <header className="App-header">
-          <div className="logo-container" onClick={() => window.history.back()} title="Return to Node Dashboard">
-            <div className="logo" id="redirect-button">
-              <span className="logo-text"><b>CRYPT</b></span>
-              <div className="logo-gem-container">
-                <i className="bi bi-gem logo-gem"></i>
-              </div>
-              <span className="logo-text"><b>NITE</b></span>
-            </div>
+      <header className="App-header">
+        <div id="logo-container" className="logo-container" title="Click to logout" onClick={logout}>
+          <div className="logo" id="logout-button">
+            <span className="logo-text"><b>CRYPT</b></span>
+          <div className="logo-gem-container">
+             <i className="bi bi-gem logo-gem"></i>
           </div>
-        </header>
+            <span className="logo-text"><b>NITE</b></span>
+          </div>
+      </div>
+    </header>
 
 {/* Navigation Menu */}
 <nav>
